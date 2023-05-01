@@ -1,0 +1,182 @@
+/*
+ * newcode.c
+ *
+ *  Created on: Apr 27, 2023
+ *      Author: Gianna
+ *
+ *      the plan is to make one giant speaker function
+ *
+ *      pusedo code is
+ *
+ *      if button pressed (temp/smoke detected)
+ *      {
+ *          speaker does beep
+ *
+ *          if voice detected
+ *          {
+ *              speaker stops beep
+ *
+ *            if temp high for > 10 sec
+ *            {
+ *              beep beep again until 2nd button pressed
+ *            }
+ *          }
+ *        }
+ */
+
+#include <msp430.h>
+
+
+#define SPEAKER BIT1
+#define LED_PIN BIT0  // Green LED connected to P1.0
+#define SOUND_SENSOR_PIN BIT1  // Sound sensor connected to P1.1
+
+unsigned int i;
+int note_index;
+int sound_value = 0;
+
+const int BassTab[] = {1911, 1702, 1516, 1431, 1275, 1136, 1012}; //bass 1~7
+const int DURATION = 10000; // duration of note in cycles
+
+//void pinInit(void); //pin outs for speaker
+void configADC();
+void sound(int note_index); //makes the beep beep
+void gpioInit(); //pinouts for leds and buttons
+void beep();
+void mic();
+
+int main(void)
+{
+    WDTCTL = WDTPW | WDTHOLD;   // stop watchdog timer
+    gpioInit();                 // Initialize all GPIO Pins for the project
+    PM5CTL0 &= ~LOCKLPM5;       // Disable the GPIO power-on default high-impedance mode
+
+    //mic();
+    while(1)
+    {
+
+            if (!(P4IN & BIT1))            // If S1 (P4.1) is pressed temp detected
+            {
+              P6OUT &= ~BIT6;         //turn off green LED
+              int c = 0;
+
+              do
+              {
+                  P1OUT ^= BIT0;          //toggle red LED
+                  __delay_cycles(5000);
+
+                  beep();
+                  c = c + 1;
+
+                  /*if (sound_value > 100)
+                  {
+                      P1OUT ^= BIT0;          //toggle red LED
+                      __delay_cycles(5000);
+
+                      c = c + 1;
+                  } */
+
+                  if ((P4IN & BIT1))      //If the button is let go before 10 seconds go to Armed
+                   {
+                      P1OUT &= ~BIT0;         //turn off red LED
+                      P6OUT ^= BIT6;          //toggle green LED
+
+                       c = 0;
+                       break;
+                   }
+
+
+              } while (c < 20);
+
+              do
+              {
+                  P1OUT |= BIT0;          //solid red LED
+                  P6OUT &= ~BIT6;         //turn off green LED
+                  beep();
+
+                  if (!(P2IN & BIT3))  //if the other button is pressed reset loop
+                  {
+                      c = 0;             //reset i
+                      P1OUT &= ~BIT0;     // turn off red LED
+                      P6OUT ^= BIT6;          // Toggle P6.6
+                      __delay_cycles(3000000);             // Delay cycles
+                  }
+              } while (c == 20);
+
+
+            }
+            else
+            {
+                P1OUT &= ~BIT0;
+                P6OUT ^= BIT6;          // Toggle P6.6
+                __delay_cycles(3000000);             // Delay for 100000*(1/MCLK)=0.1s
+            }
+    }
+}
+
+void configADC()
+{
+    // Configure ADC
+        P1SEL1 |= SOUND_SENSOR_PIN;
+        P1SEL0 |= SOUND_SENSOR_PIN;
+
+        ADCCTL0 |= ADCSHT_2 | ADCON;
+        ADCCTL1 |= ADCSHP | ADCCONSEQ_0;
+        ADCMCTL0 |= ADCINCH_1;
+        ADCCTL0 |= ADCENC;
+}
+
+void gpioInit()
+{
+   // Setting Directions of Pins
+
+       P1DIR |= BIT0;              // Configure P1.0 to an Output
+       P6DIR |= BIT6;              // Configure P6.6 to an Output
+       P2DIR &= ~BIT3;             // Configure P2.3 to an Input
+       P4DIR &= ~BIT1;             // Configure P4.1 to an Input
+
+
+   // Configuring Pullup Resistors per MSP430FR2355 Family User Guide
+
+       P2REN |= BIT3;               // Enable Resistor on P2.3
+       P2OUT |= BIT3;               // Configure Resistor on P2.3 to be Pullup
+
+       P4REN |= BIT1;               // Enable Resistor on P4.1
+       P4OUT |= BIT1;               // Configure Resistor on P4.1 to be Pullup
+
+       //part of og pinInit func, ***will need new pinout****
+       P1DIR |= SPEAKER; // set SPEAKER pin as output
+       P1OUT &= ~SPEAKER; // set SPEAKER pin to low
+}
+
+void sound(int note_index)
+{
+    for (i = 0; i < 50; i++)
+    {
+        P1OUT |= SPEAKER; // set SPEAKER pin to high
+        __delay_cycles(DURATION); // delay for the specified duration
+        P1OUT &= ~SPEAKER; // set SPEAKER pin to low
+        __delay_cycles(DURATION); // delay for the specified duration
+    }
+}
+
+void beep()
+{
+    /*sound bass 1~7*/
+    for (note_index = 0; note_index < 1; note_index++)
+    {
+        sound(note_index);
+        __delay_cycles(10000); // delay for 500 ms
+    }
+}
+
+/*void mic()
+{
+    ADCCTL0 |= ADCSC;   // Start conversion
+    while(ADCCTL0 & ADCBUSY);   // Wait for conversion to finish
+
+    sound_value = ADCMEM0;   // Read converted value
+} */
+
+
+
